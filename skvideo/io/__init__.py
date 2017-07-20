@@ -36,6 +36,7 @@ import numpy
 import subprocess
 import json
 
+
 class VideoCapture:
     """
     Read video using avconv or ffmpeg in a subprocess.
@@ -43,11 +44,17 @@ class VideoCapture:
     The API is modelled after cv2.VideoCapture, and in many cases is a drop-in replacement.
     """
 
-    def __init__(self, filename=None, frameSize=None):
+    def __init__(self, filename=None, frameSize=None, useFFMPEG=False):
+        """
+        Constructor for video capture
+        
+        :param filename: name of video file
+        :param frameSize: resize frame to specific size
+        :param useFFMPEG: use ffmpeg instead of avconv
+        """
         self.filename = filename
-        # TODO find either avconv or ffmpeg, remember which one we found
-        self.convert_command = "avconv"
-        self.probe_command = "avprobe"
+        self.convert_command = "avconv" if not useFFMPEG else "ffmpeg"
+        self.probe_command = "avprobe" if not useFFMPEG else "ffprobe"
         self.proc = None
 
         if frameSize:
@@ -68,7 +75,7 @@ class VideoCapture:
                 self.width = self.src_width
                 self.height = self.src_height
 
-            self.depth = 3 # TODO other depths
+            self.depth = 3  # TODO other depths
             # print "Found video: %d x %d" %(self.width, self.height)
             self.open()
 
@@ -78,7 +85,7 @@ class VideoCapture:
             self.release()
         cmd = [self.convert_command, '-loglevel', 'error', '-i', self.filename]
         if self.do_resize:
-            cmd += ['-vf', 'scale=%d:%d' %(self.width, self.height)]
+            cmd += ['-vf', 'scale=%d:%d' % (self.width, self.height)]
         cmd += ['-f', 'rawvideo', '-pix_fmt', 'rgb24', '-']
         self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
         self.buf = b''
@@ -98,11 +105,12 @@ class VideoCapture:
 
             if self.proc.returncode != None:
                 if self.proc.returncode < 0:
-                    raise ValueError("Command exited with return code %d" % (self.proc.returncode)) # TODO subprocess.CalledProcessError?
+                    raise ValueError("Command exited with return code %d" % (
+                    self.proc.returncode))  # TODO subprocess.CalledProcessError?
                 else:
                     return False, None
 
-            buf = self.proc.stdout.read( nbytes - len(self.buf) )
+            buf = self.proc.stdout.read(nbytes - len(self.buf))
             # print "Read %d" % (len(buf))
 
             # Reading no data seems to be a reliable end-of-file indicator; return code is not.
@@ -110,7 +118,7 @@ class VideoCapture:
                 break
 
             self.buf += buf
-        
+
         if len(self.buf) < nbytes:
             # We didn't get any data, assume end-of-file
             if len(self.buf) == 0:
@@ -123,7 +131,7 @@ class VideoCapture:
 
         # If there is data left over, move it to beginning of buffer for next frame
         if len(self.buf) > nbytes:
-            self.buf = self.buf[nbytes:] # TODO this is a relatively slow operation, optimize
+            self.buf = self.buf[nbytes:]  # TODO this is a relatively slow operation, optimize
         # Otherwise just forget the buffer
         else:
             self.buf = b''
@@ -153,6 +161,7 @@ class VideoCapture:
         info = json.loads(output)
         return info
 
+
 class VideoWriter:
     def __init__(self, filename, fourcc='XVID', fps=30, frameSize=(640, 480), isColor=True):
         self.filename = filename
@@ -161,14 +170,14 @@ class VideoWriter:
         self.fourcc = fourcc
         self.fps = fps
         self.width, self.height = frameSize
-        self.depth = 3 # TODO other depths
+        self.depth = 3  # TODO other depths
 
         if not isColor:
             raise NotImplementedError()
 
-
     def open(self):
-        cmd = [self.convert_command, '-loglevel', 'error', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', '%dx%d' %(self.width, self.height), '-r', str(self.fps), '-i', '-']
+        cmd = [self.convert_command, '-loglevel', 'error', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s',
+               '%dx%d' % (self.width, self.height), '-r', str(self.fps), '-i', '-']
         codecs_map = {
             'XVID': 'mpeg4',
             'DIVX': 'mpeg4',
@@ -189,11 +198,9 @@ class VideoWriter:
     def write(self, image):
         if image.shape[0] != self.height or image.shape[1] != self.width or image.shape[2] != self.depth:
             raise ValueError('Image dimensions do not match')
-        self.proc.stdin.write( image.astype(numpy.uint8).tostring() )
+        self.proc.stdin.write(image.astype(numpy.uint8).tostring())
 
     def release(self):
         self.proc.stdin.close()
         self.proc.wait()
         self.proc = None
-
-
